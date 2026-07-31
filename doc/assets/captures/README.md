@@ -59,6 +59,13 @@ below tells you which is which. The rule of thumb that came out of it — verify
 tap with *unicast*, not broadcast: a LINK browse must produce TCP on 12523 and
 1051, and if it doesn't, the tap is lying.
 
+The `pktap` captures have the opposite quirk: because they record both member
+interfaces at once, every **broadcast** frame is written twice, a fraction of a
+millisecond apart. Keep-alives and the claim packets on UDP 50000 are therefore
+duplicated, and counting them naively gives double the real number and an
+apparent cadence of half the real one. Unicast frames appear once. The `bridge1`
+captures have a single interface and are free of this.
+
 ## The captures
 
 | Session | Tap | Pkts | Length | What it shows |
@@ -79,31 +86,65 @@ tap with *unicast*, not broadcast: a LINK browse must produce TCP on 12523 and
 
 `cmd.txt` in each directory is the exact `tcpdump` invocation used.
 
-## Things in here that may be new
+## What these captures change, and what they confirm
 
-Pulled out because they were surprising, not because they are a complete list.
-The `NOTES.md` files carry the detail and the reasoning.
+The first group are corrections and additions to the current Packet Analysis,
+each one made as a doc edit in the same pull request. The second group is
+independent confirmation of things already documented — worth having from pinned
+hardware, but not news. The `NOTES.md` files carry the detail and the reasoning.
 
-**Discovery / keep-alive (UDP 50000)**
+### Corrections and additions
 
-- Keep-alive cadence is **2.003 s**, not the 1.5 s that is documented.
+- **Keep-alive byte `0x25` is not a mixer-versus-CDJ discriminator.**
+  `startup.adoc` gives it as `01` on a CDJ and `02` on a mixer. It is really
+  "was I first on this network?", latched at boot and held for the session: each
+  of these decks came up `02` alone (S01, S1b) and `01` joining (S02, S2c), so it
+  is not a property of the model. In S02 the incumbent held `02` while its peer
+  count went 1 → 2.
+- **The final-stage claim repeat count does not follow the numbering mode.**
+  `startup.adoc` says a player set to a specific number sends one packet and an
+  auto-assign player sends three. Booting alone, a *manually* numbered deck sends
+  **three** (S01, S1b) — as does the auto deck in S13. Booting onto an occupied
+  network it sends **one** (S02, S2c, and the manual deck in S13). What governs
+  it is whether a peer cuts the series short.
+- **The "assignment finished" packet is not mixer-specific.** The doc describes
+  type `05` as something a mixer sends from a channel-specific port. In S13 an
+  ordinary CDJ already settled on the network sends the identical 38-byte packet,
+  carrying its own device number and `CDJ-2000nexus` in the name field, on a plain
+  unmanaged switch with no mixer present — 2 ms after the booting deck's single
+  final-stage packet, which is exactly the short-circuit above. Being unicast, it
+  is invisible on the `bridge1` captures, which is why S02 and S2c show the effect
+  without the cause.
+- **Keep-alive cadence is 2.0026 s** on these decks. The doc gives 1.5 s for the
+  mixer and no figure for a CDJ. The settled deck in S02 sends 78 consecutive
+  keep-alives with every gap between 2.002 and 2.003 s; only the first gap after
+  startup is shorter.
+- **Unsolicited media broadcasts were never seen.** `media.adoc` says standalone
+  CDJs periodically broadcast type `06` media packets so that passive observers
+  can learn about mounted media. Across the whole set every type `06` on port
+  50002 — six of them — was a unicast reply to a type `05` query in the same
+  millisecond, with as many replies as queries and none broadcast. S4b and S15b
+  cover insertion and ejection with a passive observer present and a tap that sees
+  unicast, and produced none.
+- **An unnamed volume is not an empty one**, so occupancy has to key on the track
+  count rather than the name. The volume label is big-endian UTF-16, which the
+  doc does not currently state.
+
+### Confirmations of things already documented
+
 - The name field really is `CDJ-2000nexus` with that exact casing — previously
   inferred, since no published capture contained a literal CDJ-2000 name field.
-- Byte `0x25` of the keep-alive means **"was I first on this network?"**. It is
-  latched once at boot and never re-evaluated, and the same latch drives the
-  stage-3 repeat count: a deck booting alone sends **three** ClaimNumber packets,
-  a deck joining an occupied network sends **one**. S01/S1b/S02/S2c are the four
-  captures that isolate this — the variable was confounded twice before S2c
-  settled it as a prediction.
-- S13 has deck B in **AUTO** numbering, including the type-`05` "number in use"
-  reply, alongside deck A on a manual number.
-
-**Status (UDP 50002)**
-
-- These decks send **284-byte** (`0x11c`) status packets on firmware 1.44.
-  Published tables map `0xd4` to "Nexus" and `0x11c`/`0x124` to "newer firmware /
-  Nexus 2", so **length does not identify the generation** — a parser keying
-  behaviour off packet length will mis-classify a plain nexus on current firmware.
+  Both decks report the identical name, so it does not identify a device.
+- Status packets are **284 bytes** (`0x11c`) on firmware 1.44, which matches the
+  documented "newer firmware / Nexus 2" row. Worth noting only because it is a
+  plain nexus: **packet length does not tell you the generation**, and a parser
+  keying behaviour off length will mis-classify these decks.
+- Byte `0x31` of the second-stage claim is `01` for auto-assign and `02` for a
+  specific number, exactly as documented — S13 has one deck of each.
+- Slot `02` is SD and slot `03` is USB.
+- Status bytes `0x6f`/`0x73` behave exactly as `vcdj.adoc` describes, including
+  the `02` and `03` intermediate values while media is being unmounted. S15b
+  ejects SD first and then USB, and the two bytes move in that order.
 - Status is **unicast to announced peers only**. In S4b all 1 503 status packets
   went deck-to-deck — 754 one way, 749 the other — and **not one** was addressed
   to the Mac, which had an address on the network the whole time but had never
@@ -120,27 +161,25 @@ The `NOTES.md` files carry the detail and the reasoning.
   | S13 | 1 | 3 (USB) | *(empty)* | 651 | 1 |
   | S4b | 2 | 3 (USB) | *(empty)* | 611 | 35 |
 
-  Two things fall out: **slot 2 is SD and slot 3 is USB**, and **an unnamed
-  volume is not an empty one** — two of these media report no label at all while
-  carrying 651 and 611 tracks. Occupancy has to key on the track count.
-- Media state is visible in the status packet at offsets `0x6f` and `0x73`, and
-  it is **not a binary flag**. S15b captures both slots being ejected, and the
-  bytes step through intermediate values on the way:
+  Two of these media report no label at all while carrying 651 and 611 tracks.
+- Status bytes `0x6f` (USB) and `0x73` (SD) behave exactly as `vcdj.adoc`
+  documents them — `04` when no media is present, `00` when it is loaded, and
+  `02` or `03` while it is being unmounted. S15b is a clean worked example of
+  the whole cycle, and the transitions line up with what was done on the deck:
 
   ```
-  t= 0.0s  0x6f=04 0x73=00      both settled
-  t=13.0s  0x6f=00 0x73=00
-  t=54.8s  0x6f=00 0x73=02   ┐
-  t=57.4s  0x6f=00 0x73=03   ├ 02 and 03 appear only in transition,
-  t=59.6s  0x6f=00 0x73=04   ┘ for a couple of seconds each
-  t=68.2s  0x6f=02 0x73=04
-  t=69.7s  0x6f=03 0x73=04
-  t=69.9s  0x6f=04 0x73=04
+  t= 0.0s  0x6f=04  0x73=00     no USB; SD loaded
+  t=13.0s  0x6f=00  0x73=00     USB inserted
+  t=54.8s  0x6f=00  0x73=02  ┐
+  t=57.4s  0x6f=00  0x73=03  ├ SD ejected first: unmounting, then gone
+  t=59.6s  0x6f=00  0x73=04  ┘
+  t=68.2s  0x6f=02  0x73=04  ┐
+  t=69.7s  0x6f=03  0x73=04  ├ then the USB, the same way
+  t=69.9s  0x6f=04  0x73=04  ┘
   ```
 
-  `04` is the settled state and `00` the other extreme; `02` and `03` look like a
-  mount-and-scan progression. A parser treating these as boolean will see media
-  flap.
+  The `02` and `03` states last only a second or two each, so a parser that
+  treats these bytes as a boolean will see media flap during an eject.
 - `LOAD SETTINGS` (S16a) is a UDP `0x35`/`0x36` exchange that reads
   `PIONEER/MYSETTING.DAT`. Both packets are in that capture, which is only 605
   packets long and easy to read end to end.

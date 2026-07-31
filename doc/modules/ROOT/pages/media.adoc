@@ -67,7 +67,13 @@ Since this packet uses subtype `00`, the length sent in _len~r~_ has the value `
 The name of the media stick (as assigned in rekordbox) can be found as a UTF-16 encoded string starting at byte{nbsp}``2c``, and up to `40` bytes long, padding with trailing null characters.
 This is followed by a textual representation of the creation date of the media database,
 encoded in the same way, starting at byte{nbsp}``6c``, up to `28` bytes long.
+Both are big-endian UTF-16.
 (Neither of these fields have meaningful values for “media” served by rekordbox mobile from its collection on a phone.)
+
+CAUTION: An empty name does not mean an empty slot.
+Ordinary USB media can report no name at all while still holding a full rekordbox database, so an implementation deciding whether a slot is worth showing should key on the track count rather than on the name being present.
+
+> In the https://github.com/Deep-Symmetry/dysentery/tree/main/doc/assets/captures[hardware captures], two of the four media described this way report an entirely empty name field while carrying 651 and 611 tracks respectively (`S13` and `S4b`).
 
 The number of rekordbox tracks present in the database is found in bytes{nbsp}``a6`` and `a7` (this will be zero if there is no rekordbox database present).
 The value _col_ at byte{nbsp}``a8`` tells the player what color it should tint its user interface when it has loaded tracks from the media (and also the color to tint the light around the USB slot on the CDJ-3000):
@@ -118,3 +124,13 @@ The broadcasts occur when media is inserted or ejected, and periodically while m
 NOTE: All-in-one units like the XDJ-XZ, XDJ-RX series, and Opus Quad do *not* send these unsolicited media slot broadcasts.
 Implementations that need media slot information from these devices must either query for it actively, or attempt to access the media without prior knowledge of its contents.
 See xref:startup.adoc#xdj-xz-limitations[XDJ-XZ Limitations] for more details.
+
+CAUTION: Older players may not send them either, so an implementation should not rely on them being available.
+A CDJ-2000nexus running firmware 1.44 was never seen sending an unsolicited type{nbsp}``06`` packet, and appears to send them only as a direct reply to a query.
+
+> Checked in the https://github.com/Deep-Symmetry/dysentery/tree/main/doc/assets/captures[hardware captures], on a rig of two such players.
+> Every type{nbsp}``06`` packet on port 50002 in the whole set — six of them, across five captures — was unicast to the address that had just sent a type{nbsp}``05`` query, arriving in the same millisecond.
+> None was broadcast, and there were exactly as many responses as queries.
+> `S4b` and `S15b` cover media being inserted and ejected while a passive observer sat on the network with an address but without announcing itself, and neither produced any unsolicited packet; `S15b` ejects both slots in turn.
+> Both were captured on a tap that sees unicast, so the absence is not the tap artefact described in those captures' notes.
+> Passive observers on this hardware therefore have to fall back on watching the <<media-response-packet,responses>> exchanged between players, or on mounting the media directly.
