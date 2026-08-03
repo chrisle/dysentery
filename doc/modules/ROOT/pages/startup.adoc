@@ -212,8 +212,15 @@ include::example$startup_shared.edn[]
 (draw-boxes (map #(text % :math) ["D" "N"]))
 ----
 
-NOTE: When the CDJ is configured to use a specific device number, it sends only one packet in this series, and then moves on to the next stage.
-When set to auto-assign, it sends all three like the mixer did.
+NOTE: The number of packets sent in this series does not depend on whether the player is set to auto-assign or to claim a specific number.
+A player sends all three unless some other device already on the network cuts the series short by sending it a <<assignment-finished-packet,device number assignment finished packet>>, at which point it moves straight on to the next stage.
+Booting onto an empty network, a player set to a specific number sends all three, and so does one set to auto-assign; booting onto a network where another player is already present, it sends only one.
+
+> This was checked on two CDJ-2000nexus players running firmware 1.44, in the https://github.com/Deep-Symmetry/dysentery/tree/main/doc/assets/captures[hardware captures].
+> Booting alone, `S01` and `S1b` (both set to a specific number) and the auto-assign player in `S13` each sent three.
+> Booting onto an occupied network, `S02`, `S2c` and the specific-number player in `S13` each sent one.
+> `S13` was captured on a tap that can see unicast, and shows the assignment finished packet arriving 2{nbsp}ms after the single final-stage packet.
+> The case of an auto-assign player joining an occupied network was not captured.
 
 And just like the mixer, after sending the final such packet, the CDJ is done starting up, and settles down to broadcasting keep-alive packets on port 50000 at a less frequent interval:
 
@@ -235,8 +242,23 @@ include::example$startup_shared.edn[]
 (draw-related-boxes [0 0 0 1 0])
 ----
 
-As seems to usually be the case when comparing mixer and CDJ packets sent to port 50000, the difference between this and <<#mixer-keep-alive,the mixer version>> is that byte{nbsp}``25`` (following the device number `D`) has the value `01` rather than `02`, and the same is true of the second-to-last byte in each of the packets.
-(Byte{nbsp}``34`` is `01` here and `02` in <<#mixer-keep-alive,the mixer version>>.)
+As seems to usually be the case when comparing mixer and CDJ packets sent to port 50000, the second-to-last byte in each of these packets differs from <<#mixer-keep-alive,the mixer version>>: byte{nbsp}``34`` is `01` here and `02` in the mixer version.
+
+Byte{nbsp}``25`` (following the device number `D`), however, is not a fixed mixer-versus-CDJ discriminator, even though it is often seen holding `01` on a CDJ.
+On a CDJ it records whether the player found any other device already on the network when it started up: it holds `02` if the player was the first device present, and `01` if another device was already there.
+The value is latched during startup and held for the rest of the session.
+In particular it does *not* change when peers later appear or disappear, even though _p_ in the same packet does.
+
+> Observed across eight device-sessions from two CDJ-2000nexus players on firmware 1.44, in the https://github.com/Deep-Symmetry/dysentery/tree/main/doc/assets/captures[hardware captures].
+> Each player was seen holding `02` when it booted alone (`S01`, `S1b`) and `01` when it booted onto a network the other player already occupied (`S02`, `S2c`), so the value is not a property of the model.
+> In `S02` the already-present player held `02` for the whole capture while its _p_ went from 1 to 2.
+
+That “less frequent interval” is very close to **two seconds** on a CDJ, rather than the second and a half seen from the mixer, and it is held tightly.
+An implementation should not assume 1.5{nbsp}s when deciding how long to wait before concluding that a player has vanished.
+
+> Measured on two CDJ-2000nexus players running firmware 1.44 in the same captures, where the median gap is 2.0026{nbsp}s.
+> The tightest run is the settled player in `S02`: 78 consecutive keep-alives with every gap between 2.002 and 2.003{nbsp}s.
+> Only the very first gap after startup is shorter.
 
 As described earlier, _p_ indicates the number of peer devices recognized on the network (including itself).
 For example, this value starts as 1, and if another device is switched on, this value increments to 2.
@@ -327,6 +349,16 @@ include::example$startup_shared.edn[]
 In this packet, the _D_ value is the mixer's own device number, `21`.
 
 At this point, rather than sending the remainder of the series of final stage claim packets, the CDJ immediately transitions to broadcasting <<cdj-keep-alive,keep-alive packets>>.
+
+[#assignment-finished-from-player]
+NOTE: This packet is not specific to a mixer, nor to a channel-specific port.
+An ordinary CDJ that is already settled on the network sends the same packet, in the same way, to a player it sees claiming a device number — on a plain unmanaged switch, with no mixer present anywhere.
+The _D_ value is then simply the sending player's own device number rather than `21`.
+This is the mechanism behind the <<cdj-assign-final,final-stage claim series>> being cut short to a single packet whenever any other device is already present.
+
+> Seen in the `S13` https://github.com/Deep-Symmetry/dysentery/tree/main/doc/assets/captures[hardware capture], between two CDJ-2000nexus players on firmware 1.44 connected through an unmanaged switch.
+> Two milliseconds after the booting player broadcast its single final-stage claim packet for device 1, the player already holding device 2 sent it this `26`-byte packet directly, carrying `02` as _D_ and `CDJ-2000nexus` in the device name field, and the booting player went straight to keep-alives.
+> Because the packet is unicast, it is invisible to a capture taken on a bridge interface, which is why `S02` and `S2c` show the shortened claim series but not its cause.
 
 [#startup-3000]
 === Startup with CDJ-3000s
