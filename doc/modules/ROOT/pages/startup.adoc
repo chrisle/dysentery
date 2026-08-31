@@ -35,9 +35,10 @@ The value `02` is followed by a two-byte value _len~p~_ that indicates the lengt
 In the case of this kind of mixer announcement packet, the length is `0025`, and the payload is the single-byte value `02`.
 
 After about three of these packets are sent, another series of three begins.
-It is not clear what purpose these packets serve, because they are not yet asserting ownership of any device number; perhaps they are used when CDJs are powering up as part of the mechanism the mixer can use to tell them which device number to use based on which network port they are connected to?
+These packets are not yet asserting ownership of any device number; they announce the device’s name and MAC address so that everything else on the network sees the newcomer before it starts claiming one.
+That early appearance is presumably what gives a mixer with channel-specific ports its opening to tell a CDJ which device number to use, as described in <<startup-channel-specific,Startup in a Channel-Specific Port>>: the mixer decides which number goes with which port, and the player simply accepts the number it is sent.
 
-In any case, these three packets have the value `00` at byte{nbsp}``0a``, a data length of `2c` bytes (reflected in _len~p~_), are again sent to UDP port 50000 on the local network broadcast address, at roughly 300 millisecond intervals, and have the following content:
+These three packets have the value `00` at byte{nbsp}``0a``, a data length of `2c` bytes (reflected in _len~p~_), are again sent to UDP port 50000 on the local network broadcast address, at roughly 300 millisecond intervals, and have the following content:
 
 [#mixer-assign-stage-1]
 .First-stage mixer device number claim packets.
@@ -174,8 +175,23 @@ include::example$startup_shared.edn[]
 (draw-box "MAC address" {:span 6})
 ----
 
-Three hundred milliseconds after sending the third such packet with _N_ set to `03`, the player moves on to trying to claim an unused device number _D_.
-It’s not clear how it picks one, although by this time it has had plenty of time to observe the network to see what other channels are claimed by other devices, and it seems to prefer staying on the same channel that it was using the last time it was powered on as long as that is not currently in use.
+Three hundred milliseconds after sending the third such packet with _N_ set to `03`, the player moves on to trying to claim a device number _D_.
+
+[#cdj-number-choice]
+The number it proposes first is chosen in two tiers:
+
+* If the front-panel *PLAYER No.* menu is set to a specific number, that number is used.
+  (The first entry in that menu is *Auto*; the entries after it select players 1 through 6 on a CDJ-3000.)
+* On *Auto*, the player starts from the number it was using the last time it was powered on, which it remembers across power cycles.
+  This is why players tend to come back up on the channel they had before.
+
+The claim can still fail: if another device already holds the proposed number, it says so with a <<channel-conflict-packet,channel conflict packet>>.
+An auto-assigning player then moves on to the next number, wrapping around from 6 back to 1, and gives up after six attempts; a player set to a specific number does not move off it.
+A player that already holds a number defends it rather than yielding to the newcomer.
+(This is separate from the channel-specific-port case <<startup-channel-specific,below>>, where the mixer dictates the number and the player simply accepts it.)
+
+> This describes a CDJ-3000 running firmware 3.20; older players were not checked, and presumably wrap at 4 rather than 6.
+> Whether the player also skips numbers it has already seen other devices claim, rather than relying on the conflict reply, is not known.
 
 It uses packets again nearly identical to the ones the <<mixer-assign-stage-2,mixer used>> to claim its device number, broadcast at 300 millisecond intervals on port 50000, but it turns out the value of byte `31` has a meaning we didn’t appreciate until now:
 It has the value `01` when the CDJ is trying to auto-assign a device number, and `02` when it is trying to claim a specific number.
@@ -264,6 +280,7 @@ As described earlier, _p_ indicates the number of peer devices recognized on the
 For example, this value starts as 1, and if another device is switched on, this value increments to 2.
 If the device is then switched off, this value decrements back to 1 (after about ten seconds).
 
+[#startup-channel-specific]
 === Startup in a Channel-Specific Port
 
 When connected to an Ethernet port that belongs to a specific mixer channel, the mixer will inform the player what channel it is supposed to use.
@@ -468,6 +485,7 @@ include::example$startup_shared.edn[]
 ----
 
 When a player receives such a packet it gives up on trying to claim channel _D_.
+If it was auto-assigning, it moves on to the next number, as described in <<cdj-number-choice,Startup in a Generic Port>>.
 
 [#xdj-xz-limitations]
 == XDJ-XZ (and similar device) Limitations
