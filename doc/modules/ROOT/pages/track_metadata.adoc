@@ -187,10 +187,17 @@ include::example$dbserver_shared.edn[]
 
 The value _D_ is, like in the other packets we have seen, a player device number.
 In this case it is the device that is asking for metadata information.
-It must be a valid player number between 1 and 4, and that player must actually be present on the network, must not be the same player that you are contacting to request metadata from, and must not belong to a (different) player that has connected to that player via Link and loaded a track from it.
-So the safest device number to use is the device number you are using for your virtual CDJ, but since it must be between 1 and 4, you can only do that if there are fewer than four actual CDJs on the network.
+On older players it must be a valid player number between 1 and 4, and that player must actually be present on the network, must not be the same player that you are contacting to request metadata from, and must not belong to a (different) player that has connected to that player via Link and loaded a track from it.
+So the safest device number to use with those players is the device number you are using for your virtual CDJ, but since it must be between 1 and 4, you can only do that if there are fewer than four actual CDJs on the network.
 
 > We suspect the reason for these limitations is that the database query protocol is stateful—you sometimes set up a query, then send multiple subsequent messages to page through the results—and so the players need a table to maintain that state for each database client. And old players had very little RAM, so the table probably has a fixed size, just big enough for the three other players that it might expect to talk to.
+
+The CDJ-3000 drops all of these rules except the range check, which becomes 1 through 6 to match its six-player links.
+Any _D_ from 1 to 6 is answered, including numbers that belong to no player on the network and even the number of the player being queried, while 7 and above are silently ignored: the dbserver still accepts the TCP connection and this setup message, but never responds to queries that carry an out-of-range _D_.
+The device number the client announces itself with on port 50000 plays no part in this.
+
+> Verified 2026-08-30 against two CDJ-3000s running firmware 3.20 (players 1 and 2, behind a DJM-V5, querying player 2’s USB slot), with the querying client announced on port 50000 as (virtual) player 7 throughout.
+> No other six-channel player was tested, so it is not known whether this applies beyond the CDJ-3000.
 
 The player will respond with a message of type `4000`, which is the common “success” response when requested data is available.
 The response message has two numeric arguments, the first of which is the message type of the request we sent (which was `0000`), and the second usually tells you the number of items that are available in response to the query you made, but in this special setup query, it returns its own player number:
