@@ -432,9 +432,13 @@ NOTE: Bit 6, “Play”, is 1 when the player is playing, and 0 when it is idle.
 Bit 3, “On-Air”, is 1 when it believes its output can be heard in the mix (so its platter lights will be red rather than white); this requires xref:mixer_integration.adoc#channels-on-air[cooperation with the mixer].
 Finally, bit 1, “BPM”, is 1 when the player has degraded in to BPM Sync mode (that is, it is in Sync mode, but the DJ has used pitch bend, e.g. nudged the jog wheel, so while it is still tracking the tempo of the Master player, it is no longer trying to align beats).
 
-Byte `8b`, labeled _P~2~_ seems to be another play state indicator, having the value `7a` when playing and `7e` when stopped.
-When the CDJ is trying to play, but is being held in place by the DJ holding down on the jog wheel, _P~1~_ considers it to be playing (value `03`), while _P~2~_ considers it to be stopped (value `7e`).
-Pre-nexus players seem to use the value `6a` when playing and `6e` when stopped, while nxs2 players use the values `fa` and `fe`, and the XDJ-XZ uses the values `9a` and `9e` so this seems to be another bit field like _F_.
+Byte `8b`, labeled _P~2~_, is another play state indicator, and like _F_ it is a bit field.
+Bit 2 (`04`) is the play/stop bit: it is clear when the player is playing and set when it is stopped.
+The other bits are a fixed base that depends on the player model, so the playing/stopped pair is `7a`/`7e` on nexus players, `6a`/`6e` on pre-nexus players, `9a`/`9e` on the XDJ-XZ, and `fa`/`fe` on nxs2 players and the CDJ-3000.
+When the CDJ is trying to play, but is being held in place by the DJ holding down on the jog wheel, _P~1~_ considers it to be playing (value `03`), while _P~2~_ considers it to be stopped (bit 2 set).
+
+> The CDJ-3000 (firmware 3.20) sends the same `fa`/`fe` pair as nxs2 players.
+> That bit 2 is the play/stop bit, and the rest a model-specific base, is inferred from every model’s pair differing from its partner only in that bit.
 
 There are four different places where pitch information appears in these packets: _Pitch~1~_ at bytes{nbsp}``8c``–`8f`, _Pitch~2~_ at bytes{nbsp}``98``–`9b`, _Pitch~3~_ at bytes{nbsp}``c0``–`c3`, and _Pitch~4~_ at bytes{nbsp}``c4``–`c7`.
 
@@ -450,16 +454,21 @@ The pitch adjustment percentage represented by _Pitch~1~_ would be calculated by
   {\tt 100} + byte[{\tt 8f}]) - {\tt 100000}}{{\tt 100000}}
 ++++
 
-We don’t know why there are so many copies of the pitch information, or all circumstances under which they might differ from each other, but it seems that _Pitch~1~_ and _Pitch~3~_ report the current pitch adjustment actually in effect (as reflected on the BPM display), whether it is due to the local pitch fader, or a synced tempo master.
+These are not four copies of one value but four separately computed quantities that only coincide in steady state, arranged as two effective/fader pairs.
+_Pitch~1~_ and _Pitch~3~_ report the current pitch adjustment actually in effect (as reflected on the BPM display), whether it is due to the local pitch fader, or a synced tempo master.
 
-_Pitch~2~_ and _Pitch~4~_ are always tied to the position of the local pitch fader, unless Tempo Reset is active, effectively locking the pitch fader to 0% and _Pitch~2~_ and _Pitch~4~_ to `100000`, or the player is paused or the jog wheel is being held down, freezing playback and locking the local pitch to −100%, in which case they both have the value `000000`.
+_Pitch~2~_ and _Pitch~4~_ are tied to the position of the local pitch fader, unless Tempo Reset is active, effectively locking the pitch fader to 0% and _Pitch~2~_ and _Pitch~4~_ to `100000`, or the player is paused or the jog wheel is being held down, freezing playback and locking the local pitch to −100%, in which case they both have the value `000000`.
 
+Within that pair, _Pitch~2~_ is the one that follows the platter’s brake inertia, which is why the two diverge while playback is stopping.
 When playback stops, either due to the play button being pressed or the jog wheel held down, the value of _Pitch~4~_ drops to `000000` instantly, while the value of _Pitch~2~_ drops over time, reflecting the gradual slowdown of playback which is controlled by the player’s brake speed setting.
 When playback starts, again either due to the play button being pressed or the jog wheel being released, both _Pitch~2~_ and _Pitch~4~_ gradually rise to the target pitch, at a speed controlled by the player’s release speed setting.
 
 If the player is not synced, but the current pitch is different from what the pitch fader would indicate (in other words, the player is in the state where it tells you to move the pitch fader to the current BPM in order to change the pitch), moving the pitch fader changes the values of _Pitch~2~_ and _Pitch~4~_ until they match _Pitch~1~_ and
 _Pitch~3~_ and begin to affect the actual effective pitch.
-From that point on, moving the pitch fader sets the value of all of _Pitch~1~_, _Pitch~2~_, _Pitch~3~_, and _Pitch~4~_. This all seems more complicated than it really needs to be...
+From that point on, moving the pitch fader sets the value of all of _Pitch~1~_, _Pitch~2~_, _Pitch~3~_, and _Pitch~4~_.
+
+_Pitch~1~_ and _Pitch~2~_ are also the two pitches that travel with tempo information: each is adjacent to a four-byte pair of a validity flag and a BPM, _M~v~_ and _BPM_ (bytes `90`–`93`) beside _Pitch~1~_, and _M~slip~_ and _BPM~slip~_ (bytes `94`–`97`) beside _Pitch~2~_, as described below.
+_Pitch~1~_ is the pitch that belongs with the main _BPM_ value, which is why the effective BPM calculation below uses it.
 
 [#current-track-bpm]
 The current BPM of the track (the BPM at the point that is currently being played, or at the location where the player is currently paused) can be found at bytes{nbsp}``92``–`93` (labeled _BPM_).
@@ -568,19 +577,32 @@ NOTE: Even on CDJ-3000 players with the latest firmware, which uses full-track c
 In that state a yellow exclamation symbol appears on the screen, and some features like the track skip buttons are disabled.
 On these players it might be more aptly described as emergency mode than an actual emergency loop.
 
-Bytes `c8`-`cb` seem to contain a 4-byte packet counter labeled _Packet_, which is incremented for each packet sent by the player.
+Bytes `c8`-`cb` contain a 4-byte packet counter labeled _Packet_, which is incremented for each packet sent by the player.
 (I am just guessing it is four bytes long, I have not yet watched long enough for the count to need more than the last three bytes).
-Some players do not seem to increment the counter, e.g. CDJ-3000 is fixed at `00 00 00 00`.
-Counters are instead seen incrementing in packets sent over UDP port 50004.
+Not every player increments it.
+The CDJ-3000 does not use the field at all, and always sends `00 00 00 00` here.
+Its incrementing counter is instead carried in a much larger high-resolution packet it sends on port 50004 (the same `Qspt1WmJOL` magic, packet type `1f`, roughly five times the size of a status packet), as a big-endian four-byte integer at offset `28`.
 
-Byte `cc`, labeled _nx_, seems to have the value `0f` for nexus players, `1f` for the XDJ-XZ and CDJ-3000, and `05` for older players.
+> This applies to a CDJ-3000 running firmware 3.20.
+> Whether the port 50004 counter steps once per packet, or is a timestamp or frame index, has not been checked on the wire.
 
-Byte `cd`, labeled _t_, is used to indicate when a player supports xref:touch_audio.adoc[Touch Audio], by setting bit 5.
+Byte `cc`, labeled _nx_, is a capability bit field: it has the value `05` for older players, `0f` (bits 0–3) for nexus players, and `1f` (adding bit 4) for the XDJ-XZ and CDJ-3000.
+
+Byte `cd`, labeled _t_, is another capability bit field, in which bit 5 (`20`) indicates that the player supports xref:touch_audio.adoc[Touch Audio].
+A CDJ-3000 sends `f3` here, which has that bit set.
+
+A CDJ-3000 sends `00` in both bytes toward peers too old to understand them, so an older player on the link sees them as zero.
+
+> This applies to a CDJ-3000 running firmware 3.20.
+> What the individual bits of _nx_, and the other bits of _t_, signify is not known.
 
 Bytes `d0`–`ef` and `ff`–`10f` seem to be some kind of setting blocks. See xref:vcdj.adoc#cdj-settings-block[below] for more details.
 
-Byte `113`, labeled _P~4~_, seems to be another playback state bit mask, but the details have not yet been figured out.
-Help in researching this would be appreciated, join the conversation on https://deep-symmetry.zulipchat.com/#narrow/channel/275855-dysentery-.26-crate-digger[Zulip] if you are interested in exploring it.
+Byte `113`, labeled _P~4~_, is another playback state bit mask, using bits 0, 1, 2, 4, and 5; bits 2 and 4 come as a related pair, so together they take the values `00`, `04`, `10`, or `14`.
+It is followed by two related two-byte values, at bytes `114`–`115` and `116`–`117` (the latter is _T~b~_ below), which suggests it is phase and beat-position bookkeeping.
+What each bit means has not yet been figured out, and help in researching this would be appreciated; join the conversation on https://deep-symmetry.zulipchat.com/#narrow/channel/275855-dysentery-.26-crate-digger[Zulip] if you are interested in exploring it.
+
+> The bit layout is that of a CDJ-3000 running firmware 3.20.
 
 NOTE: The next two values contain some high-resolution bar position information, likely to help render the small phase meter diagram above the big waveform, which is only available in later players, but before the CDJ-3000 introduced <<beats.adoc#absolute-position-packets,precise position packets>> (which work even better for such purposes).
 This idea is supported by the fact that these values are only sent when a player is paused and is the tempo master, so small adjustments to the jog wheel can be picked up by other players, but not during normal playback when beat packets and tempo can be used to interpolate playback position (these bytes are always just zero then).
