@@ -487,6 +487,30 @@ include::example$startup_shared.edn[]
 When a player receives such a packet it gives up on trying to claim channel _D_.
 If it was auto-assigning, it moves on to the next number, as described in <<cdj-number-choice,Startup in a Generic Port>>.
 
+[#rekordbox-startup]
+== rekordbox Startup
+
+How rekordbox joins as device 17 was read out of the rekordbox 7.2.11.0342 (macOS) application binary, whose link system-manager class keeps its function names, and checked against the application's own link log for two sessions on 2026-09-18 with two CDJ-3000s and a DJM-V5 on the LAN.
+rekordbox's frames carry `01 03` at bytes `20`-`21`, the CDJ-3000 compatible minor version.
+
+rekordbox does not announce into an empty network.
+Pressing LINK only arms the receiver; the join starts when the first keep-alive (type `06`) arrives from a device whose type byte at `34` is 1, 2, 3 or 7, and a keep-alive from a `CDJ-2000` or `CDJ-900` reporting minor version 0 is refused.
+From that packet rekordbox reads its own interface (IP, MAC, netmask) and classifies it as wired or wireless (the XDJ access-point mode).
+
+. First-stage claim, type `00`, `2c` bytes: _N_ (1, 2, 3) at `24`, device type `04` at `25`, MAC at `26`, three times 100 ms apart (200 ms on wireless), not the 300 ms a player uses.
+. Second-stage probes, type `02`, subtype `00`, `32` bytes: IP at `24`, MAC at `28`, _D_ at `2e`, the round number at `2f`, device type `04` at `30`, _a_ = `01` (auto-assign) at `31`.
+  One packet per 100 ms tick, with _D_ cycling through 17, 18, 41, 42, 43, 44 (skipping numbers already marked in use), for six full rounds, about 3.6 seconds.
+  This is a probe, not a claim: a device that holds one of those numbers answers with type `03`, subtype `00`, `27` bytes, _D_ at `24` and `01` at `26`, and rekordbox marks that number as taken.
+  rekordbox answers the same `27`-byte `03` when a probe, or an "ID block" request (type `02`, subtype `02`, carrying a bitmask of blocked numbers), names the number it holds.
+. Choice: on a wired interface rekordbox takes 17 if free, otherwise 18; on wireless the first free of 41-44.
+  Only when none is free does it ask to be assigned, sending type `02` subtype `01` (the same `32`-byte layout, the packet a CDJ sends a mixer in a <<startup-channel-specific,channel-specific port>>) up to six times and waiting for type `03` subtype `01` (byte `26` = `00` accepts _D_ at `24`, `02` means retry).
+  There is no third-stage (`04`) claim on the normal path.
+. Keep-alive, type `06`, `36` bytes, sent as soon as the number is settled and then every 2000 ms: _D_ at `24`, `01` at `25`, MAC at `26`, IP at `2c`, a member counter at `30` (incremented when the number settles and decremented when a member is aged out), `01` at `31`, device type `04` at `34`, `08` at `35`.
+
+The system manager can also send a type `0a`, `25`-byte announcement (device type at `24`) three times at 100 ms from a "compatibility" state that precedes the first stage, but on the wired path observed here link-up enters the first stage directly, so no `0a` is expected there (a hypothesis; a capture of a wireless join would show it).
+A received type `0b` resets the whole link state; types `07`/`08` are read as disconnects and `09` as a reject.
+The observed log timings (three discovery ticks inside one second, then the six-number probe rounds spanning 3.5 seconds, then `Link UP STATE_RUN id = 17`) match these constants.
+
 [#xdj-xz-limitations]
 == XDJ-XZ (and similar device) Limitations
 
