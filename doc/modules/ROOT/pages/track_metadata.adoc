@@ -368,12 +368,16 @@ include::example$dbserver_shared.edn[]
 |5 |number |Length in bytes of Label 2.
 |6 |string |Label 2 (secondary text, e.g. artist name for playlist entries, where Label 1 holds the title).
 |7 |number |Type of this item (see <<menu-item-types>>).
-|8 |number |Some sort of flag field, details still unclear.
+|8 |number |Flags. Bit `0x00000100` marks a track the DJ has played this session (see below); bit `0x01000000` is set on every track row of an artist's, album's or playlist's track list and on no other list, meaning unknown. Bit `0x00000001` was seen on a few tracks, meaning unknown.
 |9 |number |Holds _artwork_ ID when type is Track Title.
 |10 |number |Playlist position when relevant, e.g. when listing a playlist.
 |11 |number |Unknown.
 |12 |number |Unknown.
 |===
+
+The played bit was measured on rekordbox 7.2.11 serving a CDJ-3000 as a link source (854 track rows captured 2026-09-12): it sits on exactly the tracks the deck had loaded, in every list that contains them (artist, playlist, all tracks) and in the track's metadata reply, and on every row of the link-history list; the same track carries it or not consistently across lists.
+A source that sets it on every row of a playlist makes a CDJ-3000 draw the whole playlist as played.
+Whether a played track loaded from another source is marked, and when rekordbox clears the bit, was not observed.
 
 [#track-metadata-title]
 === Item 1: Title
@@ -1614,6 +1618,10 @@ include::example$dbserver_shared.edn[]
 ----
 
 Note that this uses the same “magic” _TxID_ value, `fffffffe`, that is used by the query context setup message.
+
+A CDJ-3000 (firmware 3.20, observed 2026-09-18) opens a `dbserver` connection to a rekordbox-type source within a second of first seeing it on the link and sends the setup message, then leaves the connection idle until the DJ browses; it holds that one connection for as long as the source is present, sending nothing to keep it alive.
+A source that closes the connection from its side (observed with a server closing after 30 s idle) receives the teardown message from the player in reply, and the player opens a fresh connection for its next request; a load command pushed to the player after such a close still worked, but a server should not close an idle player session.
+rekordbox 7.2.11 was never seen to close one.
 
 [#experimenting-with-metadata]
 == Experimenting with Metadata
