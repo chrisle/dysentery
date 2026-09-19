@@ -605,6 +605,11 @@ number argument with the value 1 at the end of the track artwork request message
 Similarly, to load artwork for a non-rekordbox track, you can add an extra number argument with the value 2 at the end of the track artwork request message (instead of the 1 you would send to request high-resolution rekordbox art).
 ====
 
+A CDJ-3000 (firmware 3.20) browsing rekordbox 7.2.11 as a link source always sends the extra argument `1`, and what rekordbox returns is the `artwork_m.jpg` it keeps beside the file its database's `ImagePath` names: 240x240 pixels regardless of the original's size (a 140x140 original has a 240x240 `_m`), 1-32 KB.
+In a 2026-09-12 capture its 127 non-empty artwork replies ran 2,511-32,344 bytes, the `_m` files' range; the original `artwork.jpg` files (140 to 600+ pixels square, up to 225 KB) were never sent.
+rekordbox also keeps an 80x80 `artwork_s.jpg` beside each, presumably what it serves when the argument is absent (a hypothesis).
+A source that answered the deck's `1` requests with the original files instead left much of the CDJ-3000's browse list without art; the hypothesis is that the player rejects images over some byte or pixel size.
+
 == Beat Grids
 
 The CDJs (prior to the CDJ-3000) do not send any timing information other than beat numbers during playback, which has made it difficult to offer absolute timecode information.
