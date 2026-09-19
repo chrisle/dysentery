@@ -466,6 +466,7 @@ The meanings we have identified so far are:
 |000f |Key
 |0010 |Bit Rate
 |0011 |Year
+|0012 |File typefootnote:delivery[Seen only in the track delivery info menu (message type `2602`); see <<track-delivery-info>>. The `0012` row carried the track's file-type code as its id (`0b` for the `.wav` loop observed). `0036`, `0037` and `004f` were sent with empty text.]
 | |
 a|
 [#menu-item-types-colors]
@@ -485,6 +486,9 @@ a|
 |0028 |Original Artist
 |0029 |Remixer
 |002e |Date Added
+|0036 |Delivery info, unknownfootnote:delivery[]
+|0037 |Delivery info, unknownfootnote:delivery[]
+|004f |Delivery info, closing rowfootnote:delivery[]
 | |
 a|
 [#types-for-menus]
@@ -534,6 +538,25 @@ Others are used in different kinds of menus and queries.
 
 NOTE: It seems that CDJ-3000s send additional information in the two high bytes of the menu item field.
 We have not yet figured out what this conveys, but to find the correct item type for menu requests from CDJ-3000s, it seems to be necessary to mask the field with `0xffff`.
+
+[#track-delivery-info]
+== Track Delivery Info (KUVO)
+
+After a player loads a track from a rekordbox `EXPORT` source (rekordbox itself serving its collection over the link, message type `2602` reached through the same remotedb connection used for browsing), it asks the server for two further things that relate to Pioneer's KUVO “now playing” service, and — importantly for anyone writing a server — it *blocks on the first of them*: until the `3006` request below is answered, the player sends no further remotedb request at all.
+
+Observed on rekordbox 7.2.11 (Windows) answering a CDJ-3000 running EP122 firmware over Pro DJ Link, 2026-09-19, captured on the wire. When the `3006` request went unanswered the player’s browser sat on “Waiting…”, timed out after about eighteen seconds, retried twice, and then withdrew the source — so a remotedb server that does not answer these cannot be browsed a second time after a track has been loaded from it.
+
+=== Get User Info (`3006`)
+
+The player sends a message of type `3006` whose single argument is the usual four-byte menu context number (_r:m:s:t_). rekordbox answers with a message of type `4d02` and arguments `[3006, 00, 00a0, <blob>]`, where the blob is 160 bytes of the DJ’s KUVO account information. In the capture it began `00 04 82 82 00 00 01 4d 80 04 24 28` and was zero after the first bytes; a signed-out or empty account appears to be served as all-zero, and the length (`00a0` = 160) rather than the content is what the player requires to proceed.
+
+=== Get Delivery Info (`2602`)
+
+The player then sends a message of type `2602` with arguments `[context, track_id]`. rekordbox answers it as an ordinary scrollable menu: a menu header (`4000`) reporting a count of `0d`, then, once rendered (`3000`), thirteen menu-item (`4101`) rows in this order, identified by their item type (the seventh argument):
+
+`0036` (empty), `0007` Artist, `000f` Key, `000b` Duration, `0004` Track Title, `0023` Comment, `0002` Album Title, `000d` Tempo, `0037` (empty), `000e` Label, `0012` File type, `0006` Genre, `004f` (the closing row, carrying the track id in its first argument and `01` in its ninth).
+
+The rows reuse the ordinary <<menu-item-types,menu item types>>; `0012`, `0036`, `0037` and `004f` have not been seen outside this menu.
 
 [#non-rekordbox-metadata]
 == Non-Rekordbox Track Metadata
