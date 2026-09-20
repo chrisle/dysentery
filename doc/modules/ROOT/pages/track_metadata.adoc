@@ -783,6 +783,21 @@ Replace the arguments with the `var` holding your player connection, the proper 
 [#player-display]
 image::Wave-preview-example.png[alt=Waveform preview,width=433,height=86]
 
+[NOTE]
+====
+The height ranges from 0 to 31, but rekordbox does not write anywhere near that far.
+Measured over the `PWAV` and `PWV2` tags of nine tracks in a rekordbox 7.2.11 library, all loud modern masters whose raw sample peak sits at digital full scale for most of their length:
+
+* `PWAV`, the 400-column preview, has a median height of 10 to 21 and tops out at 24 or 25 on every track, never higher.
+* `PWV2`, the 100-column preview, tops out at 14 or 15 on every track, which confirms the guess below that its height is a four-bit field.
+* `PWV3`, the detailed waveform, covering the same audio, does reach the full 31.
+
+So the two preview tags are drawn into less than the field holds while the detail tag fills it, and the three do not share a ceiling.
+The height is also not the track's raw sample peak: on these masters the raw peak, which is what `PWV4` carries in its first byte, is pinned at the top of its field for most of the track, while the preview and detail heights keep their dynamics over the whole range.
+They follow the loudest of the three frequency bands instead, which is what leaves a quiet intro visibly quiet on a master that is otherwise flat out.
+Whether the 24-25 and 14-15 ceilings are fixed constants or an artifact of this sample is unverified.
+====
+
 The remaining hundred bytes appear to contain an even more compact 100-column preview representation of the waveform which is shown on pre-Nexus CDJ 900 players as shown below.
 Our best guess is that for each byte, the four low-order bits encode the height of the waveform in that column, and the high-order bits may encode saturation again?
 
@@ -1053,6 +1068,19 @@ This layout is identical to `PWV4`.
 
 The three-band waveform preview entries each consist of three one-byte height values representing the mid-range, high, and low frequencies, in that order.
 There is some scaling involved, and they seem to be drawn stacked on top of each other, with the lows in dark blue, the mid-range in amber, and the highs in white.
+
+[NOTE]
+====
+The scaling is substantial, and worth knowing before drawing these.
+Measured over the `PWV6` tags of nine tracks in a rekordbox 7.2.11 library, all loud modern masters whose raw sample peak sits at digital full scale for most of their length, the three bytes have medians of 13 to 35 and maxima of 43 to 70.
+The largest value seen anywhere in that sample was 70, and nothing came close to 127, let alone 255.
+
+So these bytes are not a full-scale magnitude waiting to be normalized; they are already a drawing height, written into roughly the bottom quarter of the byte even on the loudest material.
+Taking 127 or 255 as the reference when drawing them gives a waveform that is right in shape and far too tall, filling its strip on any modern master.
+For comparison, the same library's `PWV4` colour bytes carry the same three bands about three times hotter, reaching exactly 127 on eight of the nine tracks, so the two tags do not share a scale even though their entry layout is identical.
+
+The `PWV6` section header in the `.2EX` file uses the 20-byte form on all nine tracks: `len_entry_bytes` of 3 and `len_entries` of 1200, with no further header fields before the entries.
+====
 
 Requesting the detailed 3-band waveform is a simple variant of the request used to obtain the preview.
 The same request type is used, and the only difference is that the tag type requested to obtain the scrollable detail view is `PWV7`.
