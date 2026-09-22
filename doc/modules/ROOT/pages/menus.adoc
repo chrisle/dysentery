@@ -11,6 +11,8 @@ If all goes well, the player responds with a packet with _type_ `4000` like xref
 To actually obtain those menu entries, you send one or more xref:track_metadata.adoc#render-menu-request[“render menu” request] messages with _type_ `3000`, allowing you to paginate through the results.
 This gets you a number of responses: a xref:track_metadata.adoc#menu-header-response[menu header] message (with _type_ `4001`), followed by the number of xref::track_metadata.adoc#menu-item-response[menu item] messages you requested (with _type_ `4101` and the content described in xref:track_metadata.adoc#menu-item-types[Menu Item Types]), and finally a xref:track_metadata.adoc#menu-footer-response[menu footer] message (with _type_ `4201`).
 
+See xref:link_export.adoc[rekordbox Link Export Interactions] for independent menu contexts, position lookup (`3100`), Tag List, CDJ-3000 live search (`1500`), and track-filter requests.
+
 == Known Menu Request Types
 
 The table below shows the menu requests we have figured out so far.

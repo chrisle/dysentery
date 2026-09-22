@@ -1,0 +1,111 @@
+= rekordbox Link Export Interactions
+
+These observations were collected on 2026-09-20 against rekordbox 7.2.11.0342 and CDJ-3000 EP122 build 14970 (firmware 3.20).
+_Wire_ observations came from the actual rekordbox server; _static_ findings came from its ARM64 executable or the CDJ firmware; _player_ observations used stock CDJ firmware with synthesized peripherals.
+They do not establish behavior for every player or rekordbox version.
+All message types below are hexadecimal; ordinary argument values are decimal unless prefixed with `0x`.
+
+== Introduction and metadata compatibility
+
+After the initial five-byte exchange described in xref:track_metadata.adoc#connecting[], the introduction selects a response format.
+The following exchanges were measured against rekordbox device 17 (_wire_):
+
+[cols="1,1,1"]
+|===
+|Request |Response |Arguments per rendered item
+|`0000 [5]` |`4000 [0,17]` |12
+|`0000 [5,20]` |`0000 [17,20]` |16
+|===
+
+The one-argument introduction used by dysentery and Now Playing 3 is valid.
+A compatible server must not unconditionally substitute the two-argument variant's response.
+Both metadata probes returned a title item of type `0004`; browser lists can contain combined title/comment items of type `2304`.
+A metadata client that recognizes only `0004` cannot treat `2304` as interchangeable without explicit handling.
+These are TCP RemoteDB exchanges, not missing UDP song-metadata broadcasts.
+
+== Browser position and menu lifetime
+
+`3100` asks for an item's zero-based position in an established menu.
+It is not a loaded-track notification.
+The rekordbox function `PSvMasterDBIF::GetListBufOffset` at `0x100c9ee50` sorts the row set, compares column 2 with the requested ID, and returns its index or `0xffffffff` if absent (_static_).
+The CDJ reverses that position itself for descending display order.
+
+Menu contexts on the same connection must remain independent.
+The context word's second byte selects the menu location: main list 1, metadata/info 2, sort menu 5, and Tag List 6 were observed interleaved (_player_).
+Replacing a browser menu with a background metadata menu breaks subsequent render and position requests.
+
+Key sort `0c` follows the circle-of-fifths/Camelot order rather than alphabetic key names.
+For example, a player check with Abm (1A), B (1B), and Am (8A) returned that order, not Am, Abm, B (_player_).
+
+== Tags, ratings, and search
+
+[cols="1,2,3"]
+|===
+|Request |Arguments after context |Meaning
+|`100f` |sort |Tag List menu
+|`3002` |track ID, 1 or 0 |Add to or remove from Tag List
+|`3202` |none |Clear Tag List
+|`2107` |track ID, stars |Change rating (0 through 5)
+|===
+
+The tag-edit ticket reads argument 1 of response `4000` as status: zero means success (_static_).
+Tag membership is bit `0x00000001` of the title item's flags, including metadata rows as well as browser rows.
+A reference Tag List row had type `2304`, flags `0x01000001`, and its one-based sequence number in argument 10 (_wire_, zero-based indices).
+
+On a loaded track, TAG TRACK panel identifier 49 sends an addition on a short press and a removal on a hold after metadata refresh (_player_).
+If metadata omits the membership bit, the player can request another addition instead of removal.
+Touching the loaded title opens detailed INFO; EDIT RATING opens the star editor and saving sends `2107` (_player_).
+
+The CDJ-3000 live keyboard sends `1500`, in addition to the older `1300` search request.
+Its UTF-16 search string is the fourth argument (index 3, counting context at index 0).
+
+== Track filter
+
+Holding panel identifier 50 opens TRACK FILTER (_player_).
+`3107 [context]` requires response type `4004`, not the ordinary `4000` menu response.
+The firmware parses the FCND blob at argument 3 and expects zero status (_static_).
+
+Each getter record begins with two little-endian 32-bit values: total record size and 1.
+Its payload is `FCND`, big-endian 32-bit header size 20 and payload size, big-endian 16-bit zero and property ID, a flag byte, an operator byte, a big-endian 16-bit value count, and big-endian 32-bit values.
+The payload size is `20 + 4 * count`; total record size adds the eight-byte wrapper.
+Properties are 6 (BPM times 100), 7 (rating), 12 (key), and 15 (color).
+
+`3207` sets a property using a different encoding: flag byte, operator byte, *little-endian* 16-bit count, then little-endian 32-bit values.
+The stock setter checks the payload size equals `4 + 4 * count` (_static_, `SetFilterConditionProperty` at `0x101a35080`).
+Flag bit 0 enables a condition.
+`3007` toggles filtering; it does not establish a replacement menu.
+
+`TrackFilter::operateSign` at `0x100c944dc` implements these unsigned comparisons (_static_):
+
+[cols="1,3"]
+|===
+|Operator (decimal) |Meaning
+|0 / 1 |Equal / not equal
+|2 / 3 |Greater than / greater than or equal
+|4 / 5 |Less than / less than or equal
+|6 / 7 |Inclusive range / outside range
+|16 / 17 |All requested values present / any requested value present
+|===
+
+Rating operator 0 with value 3 means exactly three stars, not at least three.
+Color values are IDs, not a bitmask.
+Additional My Tag condition commands `3307` and `3407` appear in the stock dispatch; their complete semantics remain to be established.
+
+== Persistent grid correction
+
+`2804 [context, track]` reads the correction and `2605 [context, track, offset]` saves it.
+Offsets are signed 16-bit milliseconds in the low 16 bits of the numeric argument.
+A measured right-half-beat control at 128 BPM saved 234 milliseconds (_player_).
+Reads zero-extend those 16 bits; clients must interpret the low word as signed.
+The beat-grid reply `4602` also carries the correction as a separate trailing argument.
+
+`analyzer::MstSaveQtzOffset` at `0x10068d66c` patches the big-endian signed field at PQTZ offset `0x12` in the analysis file (_static_).
+The original beat timestamps remain unchanged.
+Applying the correction to those timestamps as well as returning it separately would apply it twice on the player.
+
+== Scope and outstanding work
+
+Stock dispatch also includes cue writes (`2105`, `2705`), waveform/VBR writes (`2005`, `2205`), analysis-atom saves (`2805`, `2905`), Tag List ordering (`3102`), and further menu families.
+These findings do not establish their complete payloads or refresh behavior.
+Full server-initiated cache invalidation also remains unresolved.
+An unsupported mutating request must not be acknowledged as successfully saved.

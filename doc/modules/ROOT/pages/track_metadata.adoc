@@ -202,6 +202,8 @@ The device number the client announces itself with on port 50000 plays no part i
 The player will respond with a message of type `4000`, which is the common “success” response when requested data is available.
 The response message has two numeric arguments, the first of which is the message type of the request we sent (which was `0000`), and the second usually tells you the number of items that are available in response to the query you made, but in this special setup query, it returns its own player number:
 
+NOTE: rekordbox 7.2.11 also accepts a two-argument introduction that selects a different response and 16-field menu items. See xref:link_export.adoc#_introduction_and_metadata_compatibility[Link Export negotiation]. The one-argument exchange described here remains valid.
+
 [#query-context-setup-response]
 .Query context setup response.
 [bytefield]
@@ -368,7 +370,7 @@ include::example$dbserver_shared.edn[]
 |5 |number |Length in bytes of Label 2.
 |6 |string |Label 2 (secondary text, e.g. artist name for playlist entries, where Label 1 holds the title).
 |7 |number |Type of this item (see <<menu-item-types>>).
-|8 |number |Flags. Bit `0x00000100` marks a track the DJ has played this session (see below); bit `0x01000000` is set on every track row of an artist's, album's or playlist's track list and on no other list, meaning unknown. Bit `0x00000001` was seen on a few tracks, meaning unknown.
+|8 |number |Flags. Bit `0x00000100` marks a track the DJ has played this session (see below); bit `0x01000000` is set on every track row of an artist's, album's or playlist's track list and on no other list, meaning unknown. Bit `0x00000001` indicates Tag List membership, including in metadata title rows; see xref:link_export.adoc#_tags_ratings_and_search[Link Export observations].
 |9 |number |Holds _artwork_ ID when type is Track Title.
 |10 |number |Playlist position when relevant, e.g. when listing a playlist.
 |11 |number |Unknown.
