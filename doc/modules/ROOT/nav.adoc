@@ -9,6 +9,7 @@
 * xref:mixer_integration.adoc[Mixer Integration]
 * xref:loading_tracks.adoc[Loading Tracks & Settings]
 * xref:media.adoc[Media Slot Queries]
+* xref:usb_export.adoc[CDJ-Compatible USB Exports]
 * xref:touch_audio.adoc[Touch Audio]
 * xref:stagehand.adoc[Stagehand iPad App]
 * xref:missing.adoc[What’s Missing?]

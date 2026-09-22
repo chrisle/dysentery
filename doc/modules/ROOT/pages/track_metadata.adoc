@@ -1765,3 +1765,22 @@ Then we submit a metadata request to `p2`, requesting the track in slot 2 (SD ca
 You can see the messages being sent and received to accomplish that.
 For more functions that you can call, including the very flexible `experiment` function, look at the source for the `dysentery.dbserver` namespace.
 Most of the response messages containing track metadata were omitted for brevity; you will get more meaningful results trying it with your own tracks, and then you can see all the details.
+
+
+[#usb-analysis-versus-link-cues]
+== USB analysis records versus LINK cue messages
+
+The wire replies above are not interchangeable with the `PCPT` and `PCP2`
+records stored inside USB `PCOB` and `PCO2` sections. Their framing and offsets
+are different. xref:usb_export.adoc#cue-writer-tables[USB cue writer tables]
+include the complete disk layouts, slot mapping, 65-entry RGB palette and
+an encoded example; xref:usb_export.adoc#phrase-data-and-export-mask[phrase data]
+includes the disk masking algorithm.
+
+On CDJ-3000 firmware 3.20, copied analysis files also need the directory
+calculated from the final USB audio path and matching embedded `PPTH` paths.
+See xref:usb_export.adoc#7-the-analysis-bundle[analysis directory derivation].
+A browsable playlist, a visible cue marker and a pad that recalls the saved
+cue are separate checks. DeviceSQL track string slot 7 contains `ON` for
+per-track hot-cue auto-load; it must agree with the corresponding OneLibrary
+flag when the player's setting is REKORDBOX SETTING.

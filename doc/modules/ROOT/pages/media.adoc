@@ -1,6 +1,11 @@
 = Media Slot Queries
 James Elliott <james@deepsymmetry.org>
 
+For the files that make an inserted USB volume a browsable device library,
+see xref:usb_export.adoc[CDJ-Compatible USB Exports]. That reference covers
+DeviceSQL, OneLibrary, analysis bundles, settings and validation; media-query
+responses alone do not prove that a player can load a track or its waveforms.
+
 In order to correctly ask for the root menu for a media slot, you need to know what kind of media (rekordbox or unanalyzed) is present in the slot so you can send the proper _T~r~_ value in your menu requests.
 You might also want to show information about the entire media collection, such as its name, size, date created, number of tracks, number of playlists, and free space.
 All of these things can be determined by sending a packet like the one shown below to port 50002 on the player that holds the slot, with appropriate values for _D_ (the device number you are posing as), _D~r~_ (the device owning the slot), and _S~r~_ (the slot you’re interested in).
